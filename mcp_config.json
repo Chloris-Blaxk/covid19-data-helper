@@ -1,0 +1,8 @@
+{
+    "mcpServers": {
+        "mcp-server-chart": {
+            "transport": "sse",
+            "url": "https://mcp.api-inference.modelscope.cn/44f664fc5d6a49/sse"
+        }
+    }
+}

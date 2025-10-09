@@ -6,3 +6,5 @@ langchain
 langchain-openai
 langgraph
 markdown2
+requests
+langchain_mcp_adapters

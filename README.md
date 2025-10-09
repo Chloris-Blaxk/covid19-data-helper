@@ -1,8 +1,6 @@
 # COVID-19 Data Helper
 
-This project provides a set of tools to analyze COVID-19 data.
-
-## File Descriptions
+## 文件描述
 
 *   `agent.py`: 解析自然语言查询并调用相应的数据分析功能。
 *   `app.py`: Flask Web 应用程序，提供用户界面来输入查询并显示结果。
@@ -16,3 +14,12 @@ This project provides a set of tools to analyze COVID-19 data.
 *   `tools.py`: 定义了 LangChain 代理可以使用的所有工具，这些工具调用 `data_analyzer` 中的函数。
 *   `WORKFLOW_DOCUMENTATION_CN.md`: 工作流程的中文文档。
 *   `templates/index.html`: Flask 应用程序的前端 HTML 模板。
+
+## TODO
+可以考虑的MCP：
+- web搜索
+- 文献数据库（论文RAG）
+- 远程代码执行
+- （文件上传？）
+
+

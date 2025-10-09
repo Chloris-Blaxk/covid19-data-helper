@@ -34,6 +34,13 @@
             {{ result_html | safe }}
         </div>
         {% endif %}
+
+        {% if tool_calls_log %}
+        <div class="result">
+            <h2>程序调用流程</h2>
+            <pre>{{ tool_calls_log | tojson(indent=2) }}</pre>
+        </div>
+        {% endif %}
     </div>
 </body>
 </html>

@@ -9,25 +9,11 @@ import os
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False  # Fix for displaying negative signs
 
-def plot_top_countries_by_confirmed_cases(top_n=10, output_dir='static/plots'):
+def plot_top_countries_by_confirmed_cases(df: pd.DataFrame, top_n=10, output_dir='static/plots'):
     """
-    Queries the top N countries by total confirmed cases and saves a bar chart.
+    Saves a bar chart of the top N countries by total confirmed cases from a DataFrame.
     Returns the path to the saved plot.
     """
-    query = f"""
-    SELECT 
-        country_region, 
-        SUM(confirmed) as total_confirmed
-    FROM 
-        daily_reports
-    GROUP BY 
-        country_region
-    ORDER BY 
-        total_confirmed DESC
-    LIMIT {top_n};
-    """
-    df = query_covid_data(query)
-
     if df.empty:
         return None
 
@@ -47,26 +33,11 @@ def plot_top_countries_by_confirmed_cases(top_n=10, output_dir='static/plots'):
     plt.close()
     return plot_path
 
-def plot_daily_cases_for_country(country_name: str, output_dir='static/plots'):
+def plot_daily_cases_for_country(df: pd.DataFrame, country_name: str, output_dir='static/plots'):
     """
-    Queries daily cases for a specific country and saves a line chart.
+    Saves a line chart of daily cases for a specific country from a DataFrame.
     Returns the path to the saved plot.
     """
-    query = f"""
-    SELECT
-        report_date,
-        SUM(confirmed) as daily_confirmed
-    FROM
-        daily_reports
-    WHERE
-        country_region = '{country_name}'
-    GROUP BY
-        report_date
-    ORDER BY
-        report_date;
-    """
-    df = query_covid_data(query)
-
     if df.empty:
         return None
 

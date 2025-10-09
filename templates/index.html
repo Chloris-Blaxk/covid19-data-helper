@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COVID-19 数据分析助手</title>
+    <style>
+        body { font-family: "Microsoft YaHei", "SimHei", sans-serif; margin: 2em; }
+        .container { max-width: 800px; margin: auto; }
+        .result { margin-top: 2em; padding: 1em; border: 1px solid #ccc; }
+        .result pre { white-space: pre-wrap; }
+        .result img { max-width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>COVID-19 数据分析助手</h1>
+        <p>请就 2020-2023 年的 COVID-19 数据集进行提问。</p>
+        <p><b>提问示例:</b></p>
+        <ul>
+            <li>绘制确诊病例数最多的15个国家的图表</li>
+            <li>展示德国每日新增病例的图表</li>
+            <li>法国的病死率是多少？</li>
+            <li>韩国在3月1日有多少死亡病例？</li>
+        </ul>
+        <form method="post">
+            <input type="text" name="query" size="50" required>
+            <button type="submit">提问</button>
+        </form>
+
+        {% if result_html %}
+        <div class="result">
+            <h2>分析结果</h2>
+            {{ result_html | safe }}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

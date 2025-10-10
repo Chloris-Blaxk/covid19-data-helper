@@ -30,6 +30,11 @@ if not api_key:
 async def call_model(state):
     print("\n---CALLING MODEL---")
     messages = state['messages']
+    
+    # Truncate messages to keep the last 10
+    if len(messages) > 10:
+        messages = messages[-10:]
+        
     print(f"Prompt: {messages}")
     
     # Add a system message to guide the model

@@ -72,7 +72,20 @@ def execute_sql_query(query: str) -> str:
     Executes a SQL query against the COVID-19 database and returns the result as a JSON string.
     """
     df = query_covid_data(query)
-    if isinstance(df, pd.DataFrame):
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        # Ensure the date column is in the correct format
+        if 'report_date' in df.columns:
+            df['report_date'] = pd.to_datetime(df['report_date']).dt.strftime('%Y-%m-%d')
+        
+        # Identify potential value columns and clean them
+        value_columns = ['total_confirmed', 'confirmed', 'deaths', 'recovered']
+        for col in value_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Drop rows with any null values after cleaning
+        df.dropna(inplace=True)
+        
         # Return data as a JSON string in 'records' format
         return df.to_json(orient='records')
     return json.dumps([])

@@ -8,3 +8,8 @@ langgraph
 markdown2
 requests
 langchain_mcp_adapters
+dashscope
+langchain-redis
+langchain-huggingface
+redis
+sentence-transformers

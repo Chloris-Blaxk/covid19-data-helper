@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import logging
 from typing import TypedDict, Annotated, Sequence
 import operator
 from dotenv import load_dotenv
@@ -12,6 +13,9 @@ from tools import get_all_tools
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Configure a logger for this module
+logger = logging.getLogger(__name__)
 
 # 1. Define the agent state
 class AgentState(TypedDict):
@@ -28,33 +32,48 @@ if not api_key:
 
 # The agent node
 async def call_model(state):
-    print("\n---CALLING MODEL---")
+    logger.info("\n---CALLING MODEL---")
     messages = state['messages']
     
     # Truncate messages to keep the last 10
     if len(messages) > 10:
         messages = messages[-10:]
         
-    print(f"Prompt: {messages}")
+    logger.info(f"Prompt: {messages}")
     
     # Add a system message to guide the model
     system_message = HumanMessage(
         content="""
-        You are a data analyst. Your goal is to answer questions about COVID-19 data.
-        To answer a question, you must follow these steps:
-        1. Use the `generate_sql_query` tool to convert the user's question to a SQL query.
-        2. Use the `execute_sql_query` tool to execute the SQL query and get the data.
-        3. If the user asks for a plot, use the appropriate chart generation tool from the MCP server to generate a plot from the data.
+        You are a multi-disciplinary expert data analyst and researcher. Your primary goal is to provide comprehensive analysis and answers based on user queries, which may span across COVID-19 data analysis and theoretical research based on scientific literature.
+
+        **CRITICAL INSTRUCTIONS:** You MUST follow this workflow. Your tool selection should be based on the user's query type.
+
+        **Workflow for Theoretical/Research Questions:**
+        1.  **Literature Review:** If the user's query is theoretical, conceptual, or requires background knowledge from scientific papers (e.g., "What is SARS?", "Compare the variants of COVID-19"), you MUST use the `rag_answer_query` tool to get a well-supported answer from the literature database.
+        2.  **Deep Research (Optional):** If the literature search does not provide a complete answer, you may use the `deep_research` tool for a broader web-based search.
+        3.  **Synthesize:** Provide a comprehensive answer based on the information gathered.
+
+        **Workflow for Data Analysis Questions:**
+        1.  **Formulate SQL:** For queries about specific data points, trends, or statistics (e.g., "confirmed cases in Germany", "top 5 countries by deaths"), use the `generate_sql_query` tool.
+        2.  **Execute SQL:** Use the `execute_sql_query` tool to get the data.
+        3.  **Visualize Data:** If the user asks for a plot or visualization, you MUST use an available chart generation tool (e.g., `generate_bar_chart`, `generate_line_chart`).
+        4.  **Synthesize and Analyze:** Provide a final, comprehensive analysis, explaining the data and charts to answer the user's question.
+
+        **Data Ingestion (As Needed):**
+        *   If the user explicitly asks to load new literature data from a CSV file, use the `rag_ingest_csv` tool.
+
+        **IMPORTANT:** Always choose the most appropriate workflow based on the user's query. Do not mix the workflows unnecessarily. The final output MUST be a complete answer or analysis.
         """
     )
     
     # Pass the API key and base_url to the client
     model = ChatOpenAI(
-        model="gpt-4o-mini",
+        model="gemini-2.5-pro",
         temperature=0, 
-        streaming=True, 
+        streaming=False, 
         api_key=api_key,
-        base_url=base_url
+        base_url=base_url,
+        timeout=1200  # Set a 20-minute timeout to prevent connection drops
     )
     
     # Get tools asynchronously
@@ -62,7 +81,7 @@ async def call_model(state):
     model_with_tools = model.bind_tools(tools)
     
     response = await model_with_tools.ainvoke([system_message] + messages)
-    print(f"Model response: {response}")
+    logger.info(f"Model response: {response}")
     return {"messages": [response]}
 
 # The tool node using the new ToolNode class
@@ -70,9 +89,9 @@ async def call_tool(state):
     """
     Wrapper for the tool node to correctly handle the output.
     """
-    print("\n---CALLING TOOL---")
+    logger.info("\n---CALLING TOOL---")
     tool_calls = state['messages'][-1].tool_calls
-    print(f"Tool calls: {tool_calls}")
+    logger.info(f"Tool calls: {tool_calls}")
     
     # Get tools asynchronously
     tools = await get_all_tools()
@@ -80,7 +99,7 @@ async def call_tool(state):
     
     # Invoke the tool node
     tool_result = await tool_node.ainvoke(state)
-    print(f"Tool result: {tool_result}")
+    logger.info(f"Tool result: {tool_result}")
 
     # The result from ToolNode is a dict with a "messages" key
     if isinstance(tool_result, dict) and "messages" in tool_result:
@@ -138,9 +157,18 @@ async def run_agent(query: str):
                     f"Arguments: {json.dumps(tool_call['args'], indent=2)}"
                 )
         if isinstance(message, ToolMessage):
+            content = message.content
+            # Check if the content is a URL and format it as a Markdown image
+            if isinstance(content, str) and content.startswith('http'):
+                # Add to the main content for rendering in the report
+                final_state['messages'][-1].content += f"\n\n![Generated Chart]({content})"
+                # Also log it correctly
+                log_content = f"Image URL: {content}"
+            else:
+                log_content = f"Content: {content}"
+
             tool_calls_log.append(
-                f"Tool Result (for {message.tool_call_id}):\n"
-                f"Content: {message.content}"
+                f"Tool Result (for {message.tool_call_id}):\n{log_content}"
             )
 
     final_content = final_state['messages'][-1].content

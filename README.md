@@ -7,10 +7,7 @@
 *   `langgraph_agent.py`: 使用 LangGraph 和 OpenAI 构建一个代理，该代理可以利用工具来回答有关 COVID-19 数据的问题。
 *   `requirements.txt`: 项目所需的依赖项。
 *   `robust_merge.py`: 将 2020-2023 年的所有每日 COVID-19 报告 CSV 文件合并到一个 SQLite 数据库中，并处理列名的变化。
-*   `SYSTEM_ARCHITECTURE_CN.md`: 系统的中文架构文档。
 *   `tools.py`: 定义了 LangChain 代理可以使用的所有工具，这些工具调用 `data_analyzer` 中的函数。
-*   `WORKFLOW_DOCUMENTATION_CN.md`: 工作流程的中文文档。
-*   `templates/index.html`: Flask 应用程序的前端 HTML 模板。
 
 ## 新增：文献数据库 RAG 工具
 
@@ -28,7 +25,7 @@
 - `HF_EMBEDDING_MODEL`：HuggingFace向量模型，默认`BAAI/bge-large-zh-v1.5`
 - `RAG_LLM_MODEL`：RAG回答所用LLM，默认`gpt-4o-mini`
 
-### 入库示例
+### 论文RAG入库示例
 可选方案 A：一次性预处理（推荐）
 
 ```
@@ -41,18 +38,4 @@ python scripts/pre_ingest_literature.py --csv_path metadata.csv --index_name cor
 rag_ingest_csv(csv_path="metadata.csv", index_name="cord_idx", limit=1000)
 ```
 
-### 提问示例
-```
-"解释SARS的病原学基本原理，并结合近期文献给出参考链接"
-```
-代理将调用`rag_answer_query`进行检索与回答，并在需要时结合`deep_research`与SQL数据分析工具给出完整结论。
 
-## TODO
-- * 数据挖掘/深度研究的 api/mcp
-- * 处理数据异常（规则匹配 | 基于模型）
-- [点到为止，实现而先不深入]文献数据库/文本向量数据库 + RAG -> 理论问题的回答（agent平台的rag工具）
-- [↑]让系统具有web搜索的能力（qwen-webagent等）
-- [x]让系统具有云端执行代码的能力（优先级低）
-- [-]让系统可以进行文件上传和处理（前端层面、rag库）
-- [难度较大，优先级较低]优化系统流程
-- [可以尝试]上下文容量问题（预处理、结构化数据、中间层）

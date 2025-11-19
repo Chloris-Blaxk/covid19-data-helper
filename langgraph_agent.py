@@ -28,6 +28,19 @@ base_url = os.getenv("OPENAI_API_BASE")
 if not api_key:
     raise ValueError("Please set the OPENAI_API_KEY environment variable in a .env file.")
 
+# Global variable to cache tools
+CACHED_TOOLS = None
+
+async def get_cached_tools():
+    """
+    Initializes and caches the tools on the first call.
+    Returns the cached tools on subsequent calls.
+    """
+    global CACHED_TOOLS
+    if CACHED_TOOLS is None:
+        CACHED_TOOLS = await get_all_tools()
+    return CACHED_TOOLS
+
 # 2. Define the nodes
 
 # The agent node
@@ -35,34 +48,32 @@ async def call_model(state):
     logger.info("\n---CALLING MODEL---")
     messages = state['messages']
     
-    # Truncate messages to keep the last 10
+    # Truncate messages to preserve the initial query and the most recent context
     if len(messages) > 10:
-        messages = messages[-10:]
-        
+        messages = [messages[0]] + messages[-9:]
+
     logger.info(f"Prompt: {messages}")
-    
+
     # Add a system message to guide the model
     system_message = HumanMessage(
         content="""
-        You are a multi-disciplinary expert data analyst and researcher. Your primary goal is to provide comprehensive analysis and answers based on user queries, which may span across COVID-19 data analysis and theoretical research based on scientific literature.
+        You are a multi-disciplinary expert data analyst and researcher. Your primary goal is to provide comprehensive analysis and answers based on user queries.
 
-        **CRITICAL INSTRUCTIONS:** You MUST follow this workflow. Your tool selection should be based on the user's query type.
+        **CRITICAL INSTRUCTIONS:**
 
-        **Workflow for Theoretical/Research Questions:**
-        1.  **Literature Review:** If the user's query is theoretical, conceptual, or requires background knowledge from scientific papers (e.g., "What is SARS?", "Compare the variants of COVID-19"), you MUST use the `rag_answer_query` tool to get a well-supported answer from the literature database.
-        2.  **Deep Research (Optional):** If the literature search does not provide a complete answer, you may use the `deep_research` tool for a broader web-based search.
-        3.  **Synthesize:** Provide a comprehensive answer based on the information gathered.
+        1.  **Analyze the User's Query:** First, determine the nature of the query. Is it a data analysis question, a plotting request, a literature research question, or a complex open-ended question?
 
-        **Workflow for Data Analysis Questions:**
-        1.  **Formulate SQL:** For queries about specific data points, trends, or statistics (e.g., "confirmed cases in Germany", "top 5 countries by deaths"), use the `generate_sql_query` tool.
-        2.  **Execute SQL:** Use the `execute_sql_query` tool to get the data.
-        3.  **Visualize Data:** If the user asks for a plot or visualization, you MUST use an available chart generation tool (e.g., `generate_bar_chart`, `generate_line_chart`).
-        4.  **Synthesize and Analyze:** Provide a final, comprehensive analysis, explaining the data and charts to answer the user's question.
+        2.  **Execute the Correct Workflow:**
+            -   **For Plotting/Charting:** If the user asks for a "plot", "chart", "graph", or "picture" of data, use the appropriate tool from the `mcp-server-chart` server to generate the image.
+            -   **For Data Analysis:** For questions about specific numbers or statistics from the database, use the SQL tools (`generate_sql_query` and `execute_sql_query`).
+            -   **For Literature Research:** For specific scientific or historical questions, use the `rag_answer_query` tool.
+            -   **For Deep Research:** If a query is complex and requires in-depth analysis beyond the other tools, you MUST first ask the user for confirmation (e.g., "This query requires deep research, which may take some time. Do you want to proceed?"). Only if they agree, call the `deep_research` tool. If they decline, provide a basic answer using other tools or your own knowledge.
 
-        **Data Ingestion (As Needed):**
-        *   If the user explicitly asks to load new literature data from a CSV file, use the `rag_ingest_csv` tool.
-
-        **IMPORTANT:** Always choose the most appropriate workflow based on the user's query. Do not mix the workflows unnecessarily. The final output MUST be a complete answer or analysis.
+        3.  **Synthesize the Final Answer:**
+            -   **This is the most important step.** After a tool returns information, you MUST use that information to formulate a comprehensive, human-readable answer.
+            -   **DO NOT** simply state that you found information or repeat the raw tool output.
+            -   If a tool returns a URL to an image, present it to the user.
+            -   **Your final response should directly answer the user's original question**, using the tool's output as your source material. If a tool returns "not_found" or an empty result, inform the user that you could not find the information.
         """
     )
     
@@ -76,13 +87,18 @@ async def call_model(state):
         timeout=1200  # Set a 20-minute timeout to prevent connection drops
     )
     
-    # Get tools asynchronously
-    tools = await get_all_tools()
+    # Get tools from cache
+    tools = await get_cached_tools()
     model_with_tools = model.bind_tools(tools)
     
-    response = await model_with_tools.ainvoke([system_message] + messages)
-    logger.info(f"Model response: {response}")
-    return {"messages": [response]}
+    try:
+        response = await model_with_tools.ainvoke([system_message] + messages)
+        logger.info(f"Model response: {response}")
+        return {"messages": [response]}
+    except IndexError:
+        logger.error("IndexError caught: The model's response was likely empty.")
+        error_message = HumanMessage(content="Sorry, I encountered an issue processing your request. The model returned an empty response.")
+        return {"messages": [error_message]}
 
 # The tool node using the new ToolNode class
 async def call_tool(state):
@@ -93,8 +109,8 @@ async def call_tool(state):
     tool_calls = state['messages'][-1].tool_calls
     logger.info(f"Tool calls: {tool_calls}")
     
-    # Get tools asynchronously
-    tools = await get_all_tools()
+    # Get tools from cache
+    tools = await get_cached_tools()
     tool_node = ToolNode(tools)
     
     # Invoke the tool node
@@ -148,6 +164,12 @@ async def run_agent(query: str):
     inputs = {"messages": [HumanMessage(content=query)]}
     final_state = await app.ainvoke(inputs)
     
+    final_content = final_state['messages'][-1].content
+
+    # If the last message is our specific error message, just return it.
+    if final_content == "Sorry, I encountered an issue processing your request. The model returned an empty response.":
+        return final_content, ""  # No tool calls to log in this case
+
     tool_calls_log = []
     for message in final_state['messages']:
         if hasattr(message, 'tool_calls') and message.tool_calls:
@@ -160,9 +182,6 @@ async def run_agent(query: str):
             content = message.content
             # Check if the content is a URL and format it as a Markdown image
             if isinstance(content, str) and content.startswith('http'):
-                # Add to the main content for rendering in the report
-                final_state['messages'][-1].content += f"\n\n![Generated Chart]({content})"
-                # Also log it correctly
                 log_content = f"Image URL: {content}"
             else:
                 log_content = f"Content: {content}"
@@ -171,7 +190,6 @@ async def run_agent(query: str):
                 f"Tool Result (for {message.tool_call_id}):\n{log_content}"
             )
 
-    final_content = final_state['messages'][-1].content
     return final_content, "\n\n".join(tool_calls_log)
 
 async def main():

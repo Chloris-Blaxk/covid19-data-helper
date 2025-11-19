@@ -1,4 +1,4 @@
-flask
+Flask[async]
 pandas
 matplotlib
 python-dotenv
@@ -13,3 +13,15 @@ langchain-redis
 langchain-huggingface
 redis
 sentence-transformers
+crawl4ai
+json5
+pillow
+beautifulsoup4
+qwen-agent
+datasets
+tenacity
+volcengine-python-sdk
+langchain-community
+PyYAML>=6.0.1
+langchain-core
+nest_asyncio

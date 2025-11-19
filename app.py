@@ -1,13 +1,18 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from langgraph_agent import run_agent
 import os
 import asyncio
-import markdown2
 import traceback
 import logging
 import datetime
+from flask_cors import CORS
 
 app = Flask(__name__)
+# Allow requests from the default Vue dev server origin
+CORS(app, resources={r"/chat": {"origins": "http://localhost:8080"}})
+
+# In-memory store for conversation history
+conversation_history = []
 
 # --- Logging Setup ---
 # Create a logger
@@ -38,6 +43,7 @@ agent_logger = logging.getLogger('langgraph_agent')
 agent_logger.setLevel(logging.INFO)
 agent_logger.addHandler(file_handler)
 agent_logger.addHandler(stream_handler)
+agent_logger.propagate = False # Prevent duplicate logging
 # --- End Logging Setup ---
 
 
@@ -45,32 +51,40 @@ agent_logger.addHandler(stream_handler)
 if not os.path.exists('static/plots'):
     os.makedirs('static/plots')
 
-@app.route('/', methods=['GET', 'POST'])
-async def index():
-    result_html = None
-    tool_calls_log = None
-    if request.method == 'POST':
-        query = request.form['query']
-        logger.info(f"Received query: {query}")
-        try:
-            # Await the async agent function directly
-            markdown_report, tool_calls_log_str = await run_agent(query)
-            
-            logger.info(f"Generated Report:\n{markdown_report}")
-            logger.info(f"Tool Calls Log:\n{tool_calls_log_str}")
+@app.route('/')
+def index():
+    return "<h1>COVID-19 Data Helper AI Assistant API is running.</h1>"
 
-            # Convert the Markdown report to HTML
-            result_html = markdown2.markdown(markdown_report, extras=["fenced-code-blocks", "tables"])
-            tool_calls_log = tool_calls_log_str
-        except Exception as e:
-            error_message = f"An error occurred: {e}"
-            detailed_traceback = traceback.format_exc()
-            logger.error(f"{error_message}\n{detailed_traceback}")
-            print(error_message)
-            traceback.print_exc()
-            result_html = f"<p><strong>发生错误:</strong> {e}</p>"
-            
-    return render_template('index.html', result_html=result_html, tool_calls_log=tool_calls_log)
+@app.route('/chat', methods=['POST'])
+async def chat():
+    global conversation_history
+    data = request.get_json()
+    
+    messages = data.get('messages', [])
+    if not messages:
+        return jsonify({"error": "No messages provided"}), 400
+        
+    logger.info(f"Received messages: {messages}")
+
+    # Use the history sent from the client for context
+    conversation_history = messages
+
+    try:
+        # Create a query string from the history for the agent.
+        conversation_query = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_history])
+
+        markdown_report, _ = await run_agent(conversation_query)
+        
+        logger.info(f"Generated Report:\n{markdown_report}")
+
+        return jsonify({"response": markdown_report})
+
+    except Exception as e:
+        error_message = f"An error occurred: {e}"
+        detailed_traceback = traceback.format_exc()
+        logger.error(f"{error_message}\n{detailed_traceback}")
+        return jsonify({"error": "Sorry, an error occurred on the server."}), 500
 
 if __name__ == '__main__':
+    # Run on a different port to avoid conflict with EpiInsight's own backend
     app.run(debug=True, port=5001)
